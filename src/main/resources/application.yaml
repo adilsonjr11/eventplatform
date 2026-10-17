@@ -1,13 +1,21 @@
 spring:
 
+  application:
+    name: event-platform
+
   datasource:
     url: jdbc:postgresql://localhost:5432/eventdb
     username: postgres
     password: postgres
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
 
   kafka:
     bootstrap-servers: localhost:9092
@@ -17,7 +25,17 @@ spring:
       host: localhost
       port: 6379
 
-  management:
-    endpoint:
-      health:
-        show-details: always
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    br.com.itau.eventplatform: INFO

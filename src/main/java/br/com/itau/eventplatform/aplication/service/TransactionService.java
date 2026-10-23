@@ -13,43 +13,54 @@ import java.time.Instant;
 
 @Slf4j
 @Service
-@Transactional
 @RequiredArgsConstructor
 public class TransactionService {
 
-    private final TransactionRepository repository;
-    private final IdempotencyService idempotencyService;
+    private final TransactionRepository transactionRepository;
+    private final IdempotencyService idempotencyService; // <- Adicionado aqui
 
+    @Transactional
     public void process(EventRequest event) {
-
-        log.info("Recebido evento {}", event.transactionId());
-
-        if (idempotencyService.alreadyProcessed(
-                event.transactionId())) {
-
-            log.warn(
-                    "Evento duplicado {} ignorado",
-                    event.transactionId());
-
-            return;
-        }
-
-        Transaction transaction = new Transaction(
-                event.transactionId(),
-                event.accountFrom(),
-                event.accountTo(),
-                event.amount(),
-                TransactionStatus.PROCESSED,
-                Instant.now()
+        log.info(
+                "CorrelationId={} TransactionId={} Verificando idempotência",
+                event.correlationId(),
+                event.transactionId()
         );
 
-        repository.save(transaction);
-
-        idempotencyService.markProcessed(
-                event.transactionId());
+        // Validação de Idempotência via Redis
+        if (idempotencyService.alreadyProcessed(event.transactionId())) {
+            log.warn(
+                    "CorrelationId={} TransactionId={} Transação duplicada detectada. Ignorando processamento.",
+                    event.correlationId(),
+                    event.transactionId()
+            );
+            return; // Interrompe para não processar nem salvar novamente
+        }
 
         log.info(
-                "Transação {} persistida",
-                event.transactionId());
+                "CorrelationId={} TransactionId={} Salvando transação na base de dados",
+                event.correlationId(),
+                event.transactionId()
+        );
+
+        Transaction transaction = Transaction.builder()
+                .transactionId(event.transactionId())
+                .accountFrom(event.accountFrom())
+                .accountTo(event.accountTo())
+                .amount(event.amount())
+                .status(TransactionStatus.PROCESSED)
+                .createdAt(Instant.now())
+                .build();
+
+        transactionRepository.save(transaction);
+
+        // Marca como processado no Redis após salvar com sucesso
+        idempotencyService.markProcessed(event.transactionId());
+
+        log.info(
+                "CorrelationId={} TransactionId={} Transação salva com sucesso no PostgreSQL",
+                event.correlationId(),
+                event.transactionId()
+        );
     }
 }
